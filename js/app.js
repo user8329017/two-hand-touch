@@ -1,4 +1,3 @@
-import { api } from './api.js';
 import { loadLeague, range, SLOT_LABEL } from './data.js';
 import { buildProjections } from './projections.js';
 import { pastScores, weeklySD, simulate, gamesForWeek, winProb } from './sim.js';
@@ -6,8 +5,8 @@ import { powerRankings, blurb, POWER_WEIGHTS } from './power.js';
 import { gradeTrades } from './trades.js';
 import { weeklyAwards, awardTotals, awardOdds, TOP_JERRY_PRIZE } from './awards.js';
 
-// Set this to your league ID to skip the setup screen for everyone who visits.
-const DEFAULT_LEAGUE_ID = '1392995163156004864'; // Sandusky's Two Hand Touch League
+// This site is just for one league.
+const LEAGUE_ID = '1392995163156004864'; // Sandusky's Two Hand Touch League
 
 const $app = document.getElementById('app');
 const $tabs = document.getElementById('tabs');
@@ -23,67 +22,8 @@ let M = null;     // league model
 let ctx = null;   // computed analytics
 let matchupWeek = null;
 
-init();
-initThemePicker();
-
-function initThemePicker() {
-  const picker = document.getElementById('theme-picker');
-  picker.value = document.documentElement.dataset.theme;
-  picker.onchange = () => {
-    document.documentElement.dataset.theme = picker.value;
-    store.set('theme', picker.value);
-  };
-}
-
-function init() {
-  const params = new URLSearchParams(location.search);
-  const leagueId = params.get('league') || DEFAULT_LEAGUE_ID || store.get('leagueId');
-  if (leagueId) start(leagueId);
-  else renderSetup();
-  window.addEventListener('hashchange', render);
-}
-
-// ---------- Setup ----------
-function renderSetup(message = '') {
-  $tabs.hidden = true;
-  $app.innerHTML = `
-    <div class="setup">
-      <h1>Connect your league</h1>
-      <p>Enter your Sleeper username to pick a league, or paste a league ID
-         (it's the long number in the league's URL on sleeper.com).</p>
-      <form id="setup-form">
-        <input id="setup-input" placeholder="Sleeper username or league ID" autocomplete="off" required>
-        <button class="primary">Go</button>
-      </form>
-      <div id="setup-out">${message ? `<p class="error">${esc(message)}</p>` : ''}</div>
-    </div>`;
-  document.getElementById('setup-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const v = document.getElementById('setup-input').value.trim();
-    const out = document.getElementById('setup-out');
-    if (/^\d{15,}$/.test(v)) return selectLeague(v);
-    out.innerHTML = '<p class="muted">Looking up leagues…</p>';
-    try {
-      const [user, state] = await Promise.all([api.user(v), api.state()]);
-      if (!user?.user_id) throw new Error(`No Sleeper user named "${v}"`);
-      const leagues = await api.userLeagues(user.user_id, state.league_season || state.season);
-      if (!leagues.length) throw new Error('No leagues found for this season.');
-      out.innerHTML = `<div class="league-list">${leagues.map(l => `
-        <button data-id="${l.league_id}"><span>${esc(l.name)}</span><span class="muted">${l.total_rosters} teams</span></button>`).join('')}</div>`;
-      out.querySelectorAll('button').forEach(b => b.onclick = () => selectLeague(b.dataset.id));
-    } catch (err) {
-      out.innerHTML = `<p class="error">${esc(err.message)}</p>`;
-    }
-  };
-}
-
-function selectLeague(id) {
-  store.set('leagueId', id);
-  const url = new URL(location.href);
-  url.searchParams.set('league', id);
-  history.replaceState(null, '', url);
-  start(id);
-}
+window.addEventListener('hashchange', render);
+start(LEAGUE_ID);
 
 // ---------- Load + compute ----------
 async function start(leagueId) {
@@ -92,8 +32,11 @@ async function start(leagueId) {
   try {
     M = await loadLeague(leagueId, progress);
   } catch (err) {
-    store.set('leagueId', '');
-    return renderSetup(`Couldn't load that league: ${err.message}`);
+    $app.innerHTML = `<div class="loading">
+      <p class="error">Couldn't load the league from Sleeper: ${esc(err.message)}</p>
+      <button class="primary" id="retry">Try again</button></div>`;
+    document.getElementById('retry').onclick = () => start(leagueId);
+    return;
   }
   progress('Simulating the rest of the season 10,000 times…');
   await new Promise(r => setTimeout(r, 30)); // let the message paint
@@ -126,16 +69,8 @@ function renderTopbar() {
     <select id="my-team" title="Highlight your team">
       <option value="">Highlight my team…</option>
       ${M.teams.map(t => `<option value="${t.rid}" ${String(t.rid) === mine ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
-    </select>
-    <button id="switch-league">Switch league</button>`;
+    </select>`;
   document.getElementById('my-team').onchange = (e) => { store.set(`myTeam:${M.leagueId}`, e.target.value); render(); };
-  document.getElementById('switch-league').onclick = () => {
-    store.set('leagueId', '');
-    history.replaceState(null, '', location.pathname);
-    document.getElementById('topbar-right').innerHTML = '';
-    document.getElementById('league-name').textContent = 'League Lab';
-    renderSetup();
-  };
 }
 
 const myRid = () => +(store.get(`myTeam:${M.leagueId}`) || 0);
@@ -382,7 +317,7 @@ function awardBadges(rid) {
   const t = ctx.awardTotals.find(x => x.rid === rid);
   if (!t) return '';
   return [
-    t.jerry ? `<span title="Top Jerry weeks: ${t.jerryWeeks.join(', ')}">👑 Top Jerry <b>×${t.jerry}</b></span>` : '',
+    t.jerry ? `<span title="Top Jerry weeks: ${t.jerryWeeks.join(', ')}">🧀 Top Jerry <b>×${t.jerry}</b></span>` : '',
     t.shower ? `<span title="Shower King weeks: ${t.showerWeeks.join(', ')}">🚿 Shower King <b>×${t.shower}</b></span>` : '',
   ].join('');
 }
@@ -407,7 +342,7 @@ function viewAwards() {
 
     ${last ? `<div class="award-heroes">
       <div class="card award-hero jerry">
-        <div class="award-emoji">👑</div>
+        <div class="award-emoji">🧀</div>
         <div class="award-label">Reigning Top Jerry · Week ${last.week}</div>
         <div class="award-name">${names(last.jerry)}</div>
         <div class="muted">${f1(last.hi)} pts · won by ${f1(last.jerryMargin)} · +${money(TOP_JERRY_PRIZE / last.jerry.length)}</div>
@@ -422,26 +357,26 @@ function viewAwards() {
 
     ${odds.length ? `<h3 class="sub-h">Week ${ctx.awardWeek} odds</h3>
     <div class="award-heroes">
-      <div class="card"><div class="award-label">👑 Most likely Top Jerry</div><ol class="odds-list">${oddsList('jerryPct')}</ol></div>
+      <div class="card"><div class="award-label">🧀 Most likely Top Jerry</div><ol class="odds-list">${oddsList('jerryPct')}</ol></div>
       <div class="card"><div class="award-label">🚿 Most likely Shower King</div><ol class="odds-list">${oddsList('showerPct')}</ol></div>
     </div>
     <p class="explain">From 20,000 simulations of week ${ctx.awardWeek} using projected lineups (byes and waiver fill-ins included).</p>` : ''}
 
     <h3 class="sub-h">Season leaderboard</h3>
     <div class="table-wrap"><table>
-      <thead><tr><th>Team</th><th>👑 Top Jerry</th><th>Winnings</th><th>🚿 Shower King</th><th class="l hide-sm">Weeks</th></tr></thead>
+      <thead><tr><th>Team</th><th>🧀 Top Jerry</th><th>Winnings</th><th>🚿 Shower King</th><th class="l hide-sm">Weeks</th></tr></thead>
       <tbody>${totals.map(t => `<tr class="${t.rid === mine ? 'mine' : ''}">
         <td>${teamChip(t.rid)}</td>
         <td class="num">${t.jerry || '<span class="muted">0</span>'}</td>
         <td class="num"><b>${t.cash ? money(t.cash) : '<span class="muted">$0</span>'}</b></td>
         <td class="num">${t.shower ? `${t.shower}` : '<span class="muted">0</span>'}</td>
-        <td class="l hide-sm muted">${[...t.jerryWeeks.map(w => `👑${w}`), ...t.showerWeeks.map(w => `🚿${w}`)].join(' ')}</td>
+        <td class="l hide-sm muted">${[...t.jerryWeeks.map(w => `🧀${w}`), ...t.showerWeeks.map(w => `🚿${w}`)].join(' ')}</td>
       </tr>`).join('')}</tbody>
     </table></div>
 
     <h3 class="sub-h">Week by week</h3>
     <div class="table-wrap"><table>
-      <thead><tr><th>Week</th><th class="l">👑 Top Jerry</th><th>Pts</th><th class="hide-sm">Margin</th><th class="l">🚿 Shower King</th><th>Pts</th><th class="hide-sm">Margin</th></tr></thead>
+      <thead><tr><th>Week</th><th class="l">🧀 Top Jerry</th><th>Pts</th><th class="hide-sm">Margin</th><th class="l">🚿 Shower King</th><th>Pts</th><th class="hide-sm">Margin</th></tr></thead>
       <tbody>${[...ctx.awards].reverse().map(a => `<tr>
         <td>Wk ${a.week}</td>
         <td class="l">${names(a.jerry)}</td><td class="num">${f1(a.hi)}</td><td class="num hide-sm muted">+${f1(a.jerryMargin)}</td>

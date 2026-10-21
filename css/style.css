@@ -84,14 +84,6 @@ button { cursor: pointer; font-weight: 600; }
 button.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 button:hover { filter: brightness(1.1); }
 
-/* Setup */
-.setup { max-width: 560px; margin: 8vh auto; text-align: center; }
-.setup h1 { font-size: 40px; margin: 0 0 8px; text-transform: var(--display-case); }
-.setup p { color: var(--muted); }
-.setup form { display: flex; gap: 8px; margin: 24px 0; }
-.setup input { flex: 1; min-width: 0; }
-.league-list { display: grid; gap: 8px; text-align: left; }
-.league-list button { display: flex; justify-content: space-between; text-align: left; width: 100%; }
 .error { color: var(--bad); }
 
 .loading { text-align: center; margin: 15vh auto; color: var(--muted); }

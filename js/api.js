@@ -17,8 +17,6 @@ async function get(url) {
 
 export const api = {
   state: () => get(`${V1}/state/nfl`),
-  user: (nameOrId) => get(`${V1}/user/${encodeURIComponent(nameOrId)}`),
-  userLeagues: (userId, season) => get(`${V1}/user/${userId}/leagues/nfl/${season}`),
   league: (id) => get(`${V1}/league/${id}`),
   users: (id) => get(`${V1}/league/${id}/users`),
   rosters: (id) => get(`${V1}/league/${id}/rosters`),

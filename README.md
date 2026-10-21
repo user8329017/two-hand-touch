@@ -1,6 +1,6 @@
 # League Lab
 
-A static fantasy football site for a Sleeper league. No backend and no API key: the browser calls Sleeper's public API directly.
+A static fantasy football site for Sandusky's Two Hand Touch League on Sleeper. No backend and no API key: the browser calls Sleeper's public API directly.
 
 ## Features
 - **Projected standings**: simulates the rest of the regular season 10,000 times. Shows playoff, bye, #1 seed and last-place odds, plus each team's seed distribution.
@@ -8,7 +8,6 @@ A static fantasy football site for a Sleeper league. No backend and no API key: 
 - **Power rankings**: all-play record 35%, season scoring 20%, last 3 weeks 20%, rest-of-season projections 25%. Shows week-over-week movement, auto-written blurbs, and Top Jerry / Shower King counts.
 - **Trade grades**: each side is graded on value received vs. value given up. Value is points above replacement in weeks a player was started, plus projected rest-of-season value. Each card has a "Show the math" breakdown.
 - **Top Jerry & Shower King**: weekly high score ($25) and low score, a season leaderboard, and odds for the upcoming week.
-- **Looks**: Office Memo (default), Sports Page, Varsity, Arcade, Night Game. Visitors can switch with the menu in the header. The default is `DEFAULT_THEME` in `index.html`.
 
 ## Run locally
 ES modules need a web server, so opening the file directly won't work. From this folder:
@@ -20,7 +19,7 @@ Then open http://localhost:8766.
 ## Host it for the league
 The site is static files only, with no server, database or API key. Every visit pulls fresh data from Sleeper,
 so scores, standings and projections update on their own. You only need to re-upload after changing the code.
-`DEFAULT_LEAGUE_ID` in `js/app.js` is already set to Sandusky's Two Hand Touch League.
+The site always shows one league, set by `LEAGUE_ID` at the top of `js/app.js`.
 
 ### Option A: Netlify Drop (easiest, about 5 minutes, no git)
 1. Make a free account at https://app.netlify.com/signup. Without an account, a dropped site expires after an hour.
