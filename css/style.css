@@ -208,3 +208,44 @@ summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 60
 .odds-list { list-style: none; margin: 8px 0 0; padding: 0; }
 .odds-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto 48px; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
 .odds-list li b { text-align: right; }
+
+/* Draft */
+.board-head { display: flex; justify-content: space-between; align-items: end; gap: 12px; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; margin: 28px 0 12px; }
+.seg button { border: 0; border-radius: 0; background: var(--card); }
+.seg button.active { background: var(--accent); color: var(--on-accent); }
+.board { table-layout: fixed; min-width: 1100px; }
+.board th { white-space: normal; }
+.board th { font-family: var(--font-body); text-transform: none; letter-spacing: 0; vertical-align: bottom; }
+.board th .team { font-family: var(--font-body); text-transform: none; letter-spacing: 0; }
+.board th .team-name { font-size: 12px; white-space: normal; line-height: 1.2; }
+.draft-math { min-width: 760px; }
+.draft-math th { font-family: var(--font-body); letter-spacing: .02em; }
+.board th .avatar { width: 22px; height: 22px; }
+.board th:first-child, .board td.rd { width: 36px; text-align: center; color: var(--muted); font-weight: 700; }
+.board td.dcell { text-align: left; padding: 6px 8px; border-left: 3px solid var(--line); vertical-align: top; }
+.board tr + tr td { border-top: 1px solid var(--line); }
+.dname { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dsub { display: flex; justify-content: space-between; gap: 4px; font-size: 11px; color: var(--muted); }
+.dspots { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.dcell.mine-cell { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pos-QB { border-left-color: #d6455d !important; }
+.pos-RB { border-left-color: #2f9e5b !important; }
+.pos-WR { border-left-color: #3b7dd8 !important; }
+.pos-TE { border-left-color: #e08a1e !important; }
+.pos-K { border-left-color: #8a8f98 !important; }
+.pos-DEF { border-left-color: #7a5a3c !important; }
+.math-card > summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; list-style: none; color: var(--text); font-size: 14px; }
+.math-card > summary::-webkit-details-marker { display: none; }
+.math-card > summary::after { content: "Show the math ▾"; color: var(--accent-2); font-size: 13px; font-weight: 600; }
+.math-card[open] > summary::after { content: "Hide ▴"; }
+.math-grades { margin-left: auto; font-size: 13px; color: var(--muted); }
+.draft-math { font-size: 12px; font-variant-numeric: tabular-nums; }
+.draft-math th, .draft-math td { padding: 6px 8px; }
+.draft-math tr.total td { background: var(--bg-2); }
+
+/* Live week */
+.matchup .score small { display: block; font-family: var(--font-body); font-size: 11px; font-weight: 500; color: var(--muted); text-align: right; letter-spacing: 0; }
+.tag.final { background: color-mix(in srgb, var(--text) 12%, transparent); color: var(--text); font-weight: 700; }
+.tag.live { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); font-weight: 700; }
+.muted-proj { color: var(--muted); }

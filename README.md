@@ -7,6 +7,7 @@ A static fantasy football site for Sandusky's Two Hand Touch League on Sleeper. 
 - **Matchups**: projected scores and win chances for any future week, with full projected lineups. If a team has nobody to start at a slot (bye, injury, no depth), it uses the average of the top 3 free agents at that slot that week, and the card says so.
 - **Power rankings**: all-play record 35%, season scoring 20%, last 3 weeks 20%, rest-of-season projections 25%. Shows week-over-week movement, auto-written blurbs, and Top Jerry / Shower King counts.
 - **Trade grades**: each side is graded on value received vs. value given up. Value is points above replacement in weeks a player was started, plus projected rest-of-season value. Each card has a "Show the math" breakdown.
+- **Draft**: the full draft board plus two grades per team. **Draft day** compares each pick to consensus Sleeper ADP. **Hindsight** compares each pick to where the player would go in a re-draft today, based on points so far plus rest-of-season projections. The board can be colored by either one, and each team has a "Show the math" breakdown.
 - **Top Jerry & Shower King**: weekly high score ($25) and low score, a season leaderboard, and odds for the upcoming week.
 
 ## Run locally

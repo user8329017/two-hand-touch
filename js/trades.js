@@ -1,19 +1,14 @@
 // Hindsight trade grades: points each side actually got out of the deal (above replacement,
 // only in weeks the player was started) + projected rest-of-season value above replacement.
 import { range } from './data.js';
-import { replacementByPos } from './projections.js';
+import { replacementLevels } from './projections.js';
 
 const PICK_VALUE = [0, 45, 25, 12, 6, 3]; // rough points-above-replacement for a draft pick by round
 const FAAB_VALUE = 0.2;                   // points per FAAB dollar
 
 export function gradeTrades(m, projections) {
-  const replFuture = Object.fromEntries(m.futureWeeks.map(w => [w, replacementByPos(m, projections, w)]));
-  // Past weeks: use the average current replacement level per position.
-  const replPast = {};
-  for (const pos of m.positions) {
-    const xs = m.futureWeeks.map(w => replFuture[w][pos]);
-    replPast[pos] = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
-  }
+  // Past weeks use the average current replacement level per position.
+  const { future: replFuture, past: replPast } = replacementLevels(m, projections);
   const onRoster = Object.fromEntries(m.teams.map(t => [t.rid, new Set(t.players)]));
 
   return m.trades.map(t => {

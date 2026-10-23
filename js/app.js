@@ -1,9 +1,10 @@
 import { loadLeague, range, SLOT_LABEL } from './data.js';
 import { buildProjections } from './projections.js';
-import { pastScores, weeklySD, simulate, gamesForWeek, winProb } from './sim.js';
+import { pastScores, weeklySD, simulate, gamesForWeek, winProb, teamSD } from './sim.js';
 import { powerRankings, blurb, POWER_WEIGHTS } from './power.js';
 import { gradeTrades } from './trades.js';
 import { weeklyAwards, awardTotals, awardOdds, TOP_JERRY_PRIZE } from './awards.js';
+import { loadDraft, gradeDraft, DRAFT_SCALE } from './draft.js';
 
 // This site is just for one league.
 const LEAGUE_ID = '1392995163156004864'; // Sandusky's Two Hand Touch League
@@ -21,6 +22,7 @@ const store = {
 let M = null;     // league model
 let ctx = null;   // computed analytics
 let matchupWeek = null;
+let draftMode = 'now'; // color the draft board by 'day' or 'now' value
 
 window.addEventListener('hashchange', render);
 start(LEAGUE_ID);
@@ -79,7 +81,7 @@ function render() {
   if (!M) return;
   const tab = (location.hash || '#standings').slice(1);
   $tabs.querySelectorAll('a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
-  const views = { standings: viewStandings, matchups: viewMatchups, power: viewPower, trades: viewTrades, awards: viewAwards };
+  const views = { standings: viewStandings, matchups: viewMatchups, power: viewPower, trades: viewTrades, draft: viewDraft, awards: viewAwards };
   (views[tab] || viewStandings)();
 }
 
@@ -150,9 +152,11 @@ function viewMatchups() {
 
   $app.innerHTML = `
     <div class="section-head"><div>
-      <h2>Week ${w} ${isPast ? 'results' : 'projections'}</h2>
-      <p>${isPast ? 'Final scores.' : `Projected lineups use each team's best available starters. If a team has nobody to start at a spot (bye week, injury, no depth),
-      we plug in the average of the top 3 free agents at that spot that week.`}</p>
+      <h2>Week ${w} ${isPast ? 'results' : w === M.liveWeek ? 'live projections' : 'projections'}</h2>
+      <p>${isPast ? 'Final scores.' : `${w === M.liveWeek ? `Starters whose game has started are locked in: <b>final</b> points once the game ends, or <b>live</b> points
+      plus the share of their projection still to play. Everyone else is set to the best possible lineup from players who haven't played yet.
+      Win chances tighten as games finish. Refresh for the latest. ` : 'Projected lineups use each team\'s best available starters. '}If a team has nobody to start at a spot
+      (bye week, injury, no depth), we plug in the average of the top 3 free agents at that spot that week.`}</p>
     </div></div>
     <div class="week-picker">${weeks.map(x => `<button data-w="${x}" class="${x === w ? 'active' : ''} ${x <= M.lastScored ? 'past' : ''}">Wk ${x}</button>`).join('')}</div>
     <div class="grid">${games.map(g => isPast ? pastCard(g) : futureCard(g)).join('') || '<p class="muted">No matchups this week.</p>'}</div>`;
@@ -178,24 +182,31 @@ function pastCard(g) {
 function futureCard(g) {
   const w = matchupWeek;
   const la = ctx.projections.byWeek[w][g.a.rid], lb = ctx.projections.byWeek[w][g.b.rid];
-  const p = winProb(la.total, lb.total, ctx.sd);
+  const p = winProb(la.total, lb.total, teamSD(ctx.projections, w, g.a.rid, ctx.sd), teamSD(ctx.projections, w, g.b.rid, ctx.sd));
   const alerts = [g.a.rid, g.b.rid].flatMap((rid, k) => (k ? lb : la).lineup.filter(x => x.waiver).map(x =>
     `<div class="alert"><b>${esc(M.teamById[rid].name)}</b> has no one to start at ${esc(slotLabel(x.slot))} (${esc(x.reason)}).
      Projected with a waiver pickup: avg of ${x.pool.length ? esc(x.pool.join(', ')) : 'nobody available'} → <b>${f1(x.pts)}</b> pts.</div>`));
+  const status = (x) => x.status === 'final' ? '<span class="tag final">FINAL</span>'
+    : x.status === 'live' ? `<span class="tag live">LIVE ${esc(x.gameLabel)}</span>`
+    : x.gameLabel ? `<span class="tag">${esc(x.gameLabel)}</span>` : '';
+  const ptsCell = (x) => x.status === 'live'
+    ? `<span class="num" title="${f1(x.scored)} so far + ${f1(x.toPlay)} projected still to play">${f1(x.scored)} → ${f1(x.pts)}</span>`
+    : `<span class="num ${x.gameLabel && !x.locked ? 'muted-proj' : ''}">${f1(x.pts)}</span>`;
   const lineup = (l) => `<ol>${l.lineup.map(x => `<li class="${x.waiver ? 'waiver' : ''}">
       <span class="slot">${esc(slotLabel(x.slot))}</span>
-      <span class="nm">${esc(x.name)}${x.team && !x.waiver ? `<span class="tag">${esc(x.pos)} ${esc(x.team)}</span>` : ''}</span>
-      <span class="num">${f1(x.pts)}</span></li>`).join('')}
+      <span class="nm">${esc(x.name)}${x.team && !x.waiver ? `<span class="tag">${esc(x.pos)} ${esc(x.team)}</span>` : ''}${status(x)}</span>
+      ${ptsCell(x)}</li>`).join('')}
       <li class="bench-h" style="display:block;border:0">Bench</li>
-      ${l.bench.filter(x => x.pts > 0 || x.bye).slice(0, 10).map(x => `<li><span class="slot">BN</span><span class="nm muted">${esc(x.name)}${x.bye ? '<span class="tag bye">BYE</span>' : ''}</span><span class="num muted">${f1(x.pts)}</span></li>`).join('')}
+      ${l.bench.filter(x => x.pts > 0 || x.bye || x.locked).slice(0, 10).map(x => `<li><span class="slot">BN</span><span class="nm muted">${esc(x.name)}${x.bye ? '<span class="tag bye">BYE</span>' : ''}${x.locked && !x.bye ? '<span class="tag" title="His game started while he was on the bench">PLAYED</span>' : ''}</span><span class="num muted">${f1(x.pts)}</span></li>`).join('')}
     </ol>`;
+  const scoreBox = (l) => `<div class="score">${f1(l.total)}${l.live && l.scored > 0 ? `<small>${f1(l.scored)} scored</small>` : ''}</div>`;
   return `<div class="card matchup ${g.a.rid === myRid() || g.b.rid === myRid() ? 'mine' : ''}">
-    <div class="row side-a ${p >= 0.5 ? 'winner' : ''}">${teamChip(g.a.rid)}<div class="score">${f1(la.total)}</div></div>
-    <div class="row side-b ${p < 0.5 ? 'winner' : ''}">${teamChip(g.b.rid)}<div class="score">${f1(lb.total)}</div></div>
+    <div class="row side-a ${p >= 0.5 ? 'winner' : ''}">${teamChip(g.a.rid)}${scoreBox(la)}</div>
+    <div class="row side-b ${p < 0.5 ? 'winner' : ''}">${teamChip(g.b.rid)}${scoreBox(lb)}</div>
     <div class="probbar"><div class="a" style="width:${p * 100}%"></div><div class="b" style="width:${(1 - p) * 100}%"></div></div>
     <div class="problabels"><span class="a">${pct(p)} win chance</span><span class="b">${pct(1 - p)}</span></div>
     ${alerts.join('')}
-    <details><summary>Projected lineups</summary><div class="lineups">${lineup(la)}${lineup(lb)}</div></details>
+    <details><summary>${la.live ? 'Lineups (live)' : 'Projected lineups'}</summary><div class="lineups">${lineup(la)}${lineup(lb)}</div></details>
   </div>`;
 }
 
@@ -383,4 +394,113 @@ function viewAwards() {
         <td class="l">${names(a.shower)}</td><td class="num">${f1(a.lo)}</td><td class="num hide-sm muted">−${f1(a.showerMargin)}</td>
       </tr>`).join('') || '<tr><td colspan="7" class="l muted">No weeks scored yet.</td></tr>'}</tbody>
     </table></div>`;
+}
+
+// ---------- Draft ----------
+function viewDraft() {
+  // The draft data is only fetched the first time someone opens this tab.
+  if (!ctx.draftState) {
+    ctx.draftState = 'loading';
+    loadDraft(M)
+      .then(raw => { ctx.draft = raw ? gradeDraft(M, ctx.projections, raw) : null; ctx.draftState = 'ready'; })
+      .catch(err => { ctx.draftState = 'error'; ctx.draftError = err.message; })
+      .finally(() => { if (location.hash === '#draft') viewDraft(); });
+  }
+  if (ctx.draftState === 'loading') {
+    $app.innerHTML = '<div class="loading"><div class="spinner"></div>Pulling the draft and season stats…</div>';
+    return;
+  }
+  if (ctx.draftState === 'error') {
+    $app.innerHTML = `<p class="error">Couldn't load the draft: ${esc(ctx.draftError)}</p>`;
+    return;
+  }
+  const d = ctx.draft;
+  if (!d) {
+    $app.innerHTML = '<p class="muted">No draft found for this league.</p>';
+    return;
+  }
+  const mine = myRid();
+  const gradeChip = (g, ratio) => `<span class="grade-sm g-${g[0]}">${g}</span> <span class="muted num">${ratio.toFixed(2)}</span>`;
+  const pickLabel = (r) => `${r.round}.${String(((r.pickNo - 1) % d.slots.length) + 1).padStart(2, '0')}`;
+  const shortName = (r) => r.pos === 'DEF' ? r.name : r.name.replace(/^(\S)\S*\s+/, '$1. ');
+  const playerRef = (r) => `<b>${esc(shortName(r))}</b> <span class="muted">(${pickLabel(r)})</span>`;
+  const teams = [...d.teams].sort((a, b) => b.nowRatio - a.nowRatio);
+
+  const cell = (r) => {
+    if (!r) return '<td></td>';
+    const rank = draftMode === 'day' ? r.marketRank : r.redraftRank;
+    const spots = r.pickNo - rank; // positive = he was worth an earlier pick
+    const tint = Math.min(45, Math.round(Math.abs(spots) / d.rows.length * 220));
+    const color = spots >= 0 ? 'var(--good)' : 'var(--bad)';
+    const tip = `Pick ${r.pickNo} · ADP rank ${r.marketRank} · re-draft rank ${r.redraftRank}`;
+    return `<td class="dcell pos-${esc(r.pos)} ${r.rid === mine ? 'mine-cell' : ''}" title="${esc(tip)}"
+      style="background: color-mix(in srgb, ${color} ${tint}%, var(--card))">
+      <div class="dname">${esc(shortName(r))}</div>
+      <div class="dsub"><span>${esc(r.pos)} ${esc(r.team)}</span><span class="dspots">${spots > 0 ? '+' : ''}${spots}</span></div>
+    </td>`;
+  };
+  const byRoundSlot = Object.fromEntries(d.rows.map(r => [`${r.round}-${r.slot}`, r]));
+
+  $app.innerHTML = `
+    <div class="section-head"><div>
+      <h2>${esc(d.draft.season)} Draft</h2>
+      <p>Two grades per team. <b>Draft day</b> compares each pick to where the market valued the player (Sleeper's consensus ADP).
+      <b>Hindsight</b> compares each pick to where he'd go in a re-draft today, based on points so far plus rest-of-season projections.
+      The number next to each grade is value returned per value spent: 1.00 means a team drafted exactly to slot.</p>
+    </div></div>
+
+    <div class="table-wrap"><table>
+      <thead><tr><th>Team</th><th>Draft day</th><th>Hindsight</th><th class="l hide-sm">Best pick</th><th class="l hide-sm">Biggest bust</th></tr></thead>
+      <tbody>${teams.map(t => `<tr class="${t.rid === mine ? 'mine' : ''}">
+        <td>${teamChip(t.rid)}</td>
+        <td class="num">${gradeChip(t.dayGrade, t.dayRatio)}</td>
+        <td class="num">${gradeChip(t.nowGrade, t.nowRatio)}</td>
+        <td class="l hide-sm">${playerRef(t.hit)} <span class="muted">→ re-draft #${t.hit.redraftRank}</span></td>
+        <td class="l hide-sm">${playerRef(t.bust)} <span class="muted">→ re-draft #${t.bust.redraftRank}</span></td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+
+    <div class="board-head">
+      <h3 class="sub-h">Draft board</h3>
+      <div class="seg">
+        <button data-mode="now" class="${draftMode === 'now' ? 'active' : ''}">Hindsight</button>
+        <button data-mode="day" class="${draftMode === 'day' ? 'active' : ''}">Draft day</button>
+      </div>
+    </div>
+    <p class="explain">Green = worth an earlier pick than he went, red = went too early. The number is how many spots
+      ${draftMode === 'day' ? 'earlier (+) or later (−) his ADP said he should go' : 'earlier (+) or later (−) he\'d go in a re-draft today'}.</p>
+    <div class="table-wrap board-wrap"><table class="board">
+      <thead><tr><th>Rd</th>${d.slots.map(s => `<th class="l">${teamChip(d.slotTeam[s], false)}</th>`).join('')}</tr></thead>
+      <tbody>${Array.from({ length: d.rounds }, (_, i) => i + 1).map(rd => `<tr>
+        <td class="rd">${rd}</td>${d.slots.map(s => cell(byRoundSlot[`${rd}-${s}`])).join('')}
+      </tr>`).join('')}</tbody>
+    </table></div>
+
+    <h3 class="sub-h">Show the math</h3>
+    <p class="explain">Each pick spends the value of its slot and returns the value of the slot where the player ranks.
+      Slot values fall smoothly from 100 (pick 1) to about 5 (last pick), so early picks matter most.
+      Draft day rank = the player's ADP ranked among everyone drafted here.
+      Re-draft rank = points so far above a waiver-level player (${Object.entries(d.replPast).map(([p, v]) => `${esc(p)} ${f1(v)}`).join(', ')} per week × ${d.weeksPlayed} weeks),
+      plus projected points above the top-3 free agents for the rest of the season.
+      Grade = value returned ÷ value spent. Scale: ${DRAFT_SCALE.map(([c, g]) => `${g} ≥ ${c.toFixed(2)}`).join(' · ')}.</p>
+    <div class="power">${teams.map(t => `
+      <details class="card math-card ${t.rid === mine ? 'mine' : ''}">
+        <summary>${teamChip(t.rid, false)}<span class="math-grades">Draft day ${gradeChip(t.dayGrade, t.dayRatio)} · Hindsight ${gradeChip(t.nowGrade, t.nowRatio)}</span></summary>
+        <div class="table-wrap" style="margin-top:12px"><table class="draft-math">
+          <thead><tr><th class="l">Pick</th><th class="l">Player</th><th>ADP</th><th>ADP rank</th><th>Pts</th><th>So far</th><th>ROS</th>
+            <th>Re-draft rank</th><th>Spent</th><th>Day value</th><th>Now value</th></tr></thead>
+          <tbody>${t.picks.map(r => `<tr>
+            <td class="l">${pickLabel(r)}</td>
+            <td class="l">${esc(r.name)} <span class="tag">${esc(r.pos)}</span></td>
+            <td>${r.adp >= 999 ? '—' : f1(r.adp)}</td><td>${r.marketRank}</td>
+            <td>${f1(r.pts)}</td><td>${r.soFar >= 0 ? '+' : ''}${f1(r.soFar)}</td><td>+${f1(r.ros)}</td><td>${r.redraftRank}</td>
+            <td>${f1(r.cost)}</td><td class="${r.daySurplus >= 0 ? 'up' : 'down'}">${f1(r.dayValue)}</td><td class="${r.nowSurplus >= 0 ? 'up' : 'down'}">${f1(r.nowSlotValue)}</td>
+          </tr>`).join('')}
+          <tr class="total"><td class="l" colspan="8">Totals</td><td><b>${f1(t.cost)}</b></td><td><b>${f1(t.day)}</b></td><td><b>${f1(t.now)}</b></td></tr></tbody>
+        </table></div>
+        <p class="formula">Draft day: ${f1(t.day)} ÷ ${f1(t.cost)} = <b>${t.dayRatio.toFixed(3)}</b> → <b>${t.dayGrade}</b>
+          &nbsp;·&nbsp; Hindsight: ${f1(t.now)} ÷ ${f1(t.cost)} = <b>${t.nowRatio.toFixed(3)}</b> → <b>${t.nowGrade}</b></p>
+      </details>`).join('')}</div>`;
+
+  $app.querySelectorAll('.seg button').forEach(b => b.onclick = () => { draftMode = b.dataset.mode; viewDraft(); });
 }

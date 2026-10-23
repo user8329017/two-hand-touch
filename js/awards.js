@@ -1,5 +1,6 @@
 // League side games: Top Jerry (weekly high score, wins cash) and Shower King (weekly low score, showers at the office).
 import { range } from './data.js';
+import { teamSD } from './sim.js';
 
 export const TOP_JERRY_PRIZE = 25;
 
@@ -47,11 +48,12 @@ export function awardOdds(m, projections, sd, week, N = 20000) {
   const lineups = projections.byWeek[week];
   if (!lineups) return [];
   const means = m.teams.map(t => lineups[t.rid]?.total ?? 0);
+  const sds = m.teams.map(t => teamSD(projections, week, t.rid, sd));
   const top = new Array(means.length).fill(0), bot = new Array(means.length).fill(0);
   for (let s = 0; s < N; s++) {
     let hi = -Infinity, lo = Infinity, hiI = 0, loI = 0;
     for (let i = 0; i < means.length; i++) {
-      const x = means[i] + sd * randn();
+      const x = means[i] + sds[i] * randn();
       if (x > hi) { hi = x; hiI = i; }
       if (x < lo) { lo = x; loI = i; }
     }

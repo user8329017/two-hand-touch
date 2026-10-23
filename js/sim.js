@@ -45,7 +45,15 @@ function erf(x) {
   const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
   return s * y;
 }
-export const winProb = (meanA, meanB, sd) => normCdf((meanA - meanB) / (sd * Math.SQRT2));
+// sdA/sdB: each team's remaining weekly uncertainty (smaller once games are played).
+export function winProb(meanA, meanB, sdA, sdB = sdA) {
+  const sd = Math.hypot(sdA, sdB);
+  if (sd < 1e-6) return meanA > meanB ? 1 : meanA < meanB ? 0 : 0.5;
+  return normCdf((meanA - meanB) / sd);
+}
+
+// A team's scoring uncertainty for a week: full SD before kickoff, shrinking as its players finish.
+export const teamSD = (projections, w, rid, sd) => sd * Math.sqrt(projections.byWeek[w]?.[rid]?.uncertainty ?? 1);
 
 function randn() {
   let u = 0; while (!u) u = Math.random();
@@ -58,6 +66,7 @@ export function simulate(m, projections, sd, N = 10000) {
   const weeks = m.futureWeeks.map(w => ({
     games: gamesForWeek(m, w).map(g => [idx[g.a.rid], idx[g.b.rid]]),
     means: m.teams.map(t => projections.byWeek[w]?.[t.rid]?.total ?? 0),
+    sds: m.teams.map(t => teamSD(projections, w, t.rid, sd)),
   }));
   const P = Math.min(m.playoffTeams || 0, T);
   const byes = P > 2 ? 2 ** Math.ceil(Math.log2(P)) - P : 0;
@@ -71,7 +80,7 @@ export function simulate(m, projections, sd, N = 10000) {
   for (let s = 0; s < N; s++) {
     m.teams.forEach((t, i) => { wins[i] = t.wins + t.ties / 2; pf[i] = t.pf; });
     for (const wk of weeks) {
-      for (let i = 0; i < T; i++) { sc[i] = Math.max(0, wk.means[i] + sd * randn()); pf[i] += sc[i]; }
+      for (let i = 0; i < T; i++) { sc[i] = Math.max(0, wk.means[i] + wk.sds[i] * randn()); pf[i] += sc[i]; }
       for (const [a, b] of wk.games) wins[sc[a] > sc[b] ? a : b] += 1;
       if (m.medianGame) {
         const sorted = Array.from(sc).sort((x, y) => y - x);

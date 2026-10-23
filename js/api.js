@@ -29,6 +29,16 @@ export const api = {
     return get(`${ROOT}/projections/nfl/${season}/${week}?season_type=regular&${pos}`);
   },
   player: (id) => get(`https://api.sleeper.com/players/nfl/${id}`),
+  // ESPN's public scoreboard: kickoff times plus live quarter/clock (Sleeper's schedule has no clock).
+  espnScoreboard: (season, week) =>
+    get(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=${week}&dates=${season}`),
+  drafts: (leagueId) => get(`${V1}/league/${leagueId}/drafts`),
+  draftPicks: (draftId) => get(`${V1}/draft/${draftId}/picks`),
+  // Season-long totals (stats) and season projections (which carry consensus ADP).
+  seasonStats: (season, positions) =>
+    get(`${ROOT}/stats/nfl/${season}?season_type=regular&${positions.map(p => `position[]=${p}`).join('&')}`),
+  seasonProjections: (season, positions) =>
+    get(`${ROOT}/projections/nfl/${season}?season_type=regular&${positions.map(p => `position[]=${p}`).join('&')}`),
 };
 
 export const avatarUrl = (avatar) =>

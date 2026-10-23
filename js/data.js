@@ -74,6 +74,10 @@ export async function loadLeague(leagueId, onProgress = () => {}) {
   }
 
   const futureWeeks = range(lastScored + 1, regEnd);
+
+  // The week being played right now (games may have started even though Sleeper hasn't finalized it).
+  const liveWeek = inSeason && state.season_type === 'regular' && state.week === futureWeeks[0] ? state.week : null;
+  const gameStatus = liveWeek ? await loadGameStatus(season, liveWeek, schedule) : {};
   onProgress(`Fetching player projections for ${futureWeeks.length} upcoming weeks…`);
   const projPositions = positions.flatMap(p => p === 'DB' ? ['DB', 'CB', 'S'] : p === 'DL' ? ['DL', 'DE', 'DT'] : [p]);
   let done = 0;
@@ -110,12 +114,49 @@ export async function loadLeague(leagueId, onProgress = () => {}) {
 
   return {
     leagueId, league, state, season, startWeek, regEnd, lastScored, futureWeeks,
-    slots, positions, teams, teamById, matchups, trades, players, proj, teamsPlaying,
+    slots, positions, teams, teamById, matchups, trades, players, proj, teamsPlaying, liveWeek, gameStatus,
     scoring: league.scoring_settings,
     playoffTeams: s.playoff_teams || 0,
     medianGame: s.league_average_match === 1,
     hasDivisions: (s.divisions || 0) > 1,
   };
+}
+
+// NFL team -> { state: 'pre' | 'in' | 'post', remaining: share of the game left (0–1), label }.
+const ESPN_TEAM_FIX = { WSH: 'WAS' };
+async function loadGameStatus(season, week, schedule) {
+  const out = {};
+  // Sleeper's schedule only knows pre_game/complete; use it as the fallback.
+  for (const g of schedule.filter(g => g.week === week)) {
+    const st = g.status === 'complete' ? { state: 'post', remaining: 0, label: 'Final' } : { state: 'pre', remaining: 1, label: '' };
+    out[g.home] = st; out[g.away] = st;
+  }
+  try {
+    const board = await api.espnScoreboard(season, week);
+    for (const ev of board.events || []) {
+      const st = ev.status || {};
+      const state = st.type?.state;
+      const kickoff = new Date(ev.date);
+      let info;
+      if (state === 'post') info = { state: 'post', remaining: 0, label: 'Final' };
+      else if (state === 'in') {
+        const [mm, ss] = String(st.displayClock || '0:00').split(':').map(Number);
+        const period = st.period || 1;
+        const elapsed = period > 4 ? 60 : (period - 1) * 15 + (15 - (mm + (ss || 0) / 60));
+        const remaining = period > 4 ? 0.05 : Math.min(1, Math.max(0, (60 - elapsed) / 60));
+        info = { state: 'in', remaining, label: period > 4 ? 'OT' : `Q${period} ${st.displayClock}` };
+      } else if (Date.now() >= kickoff.getTime()) {
+        info = { state: 'in', remaining: 1, label: 'Kickoff' }; // started, scoreboard not updated yet
+      } else {
+        info = { state: 'pre', remaining: 1, label: kickoff.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) };
+      }
+      for (const c of ev.competitions?.[0]?.competitors || []) {
+        const abbr = c.team?.abbreviation;
+        if (abbr) out[ESPN_TEAM_FIX[abbr] || abbr] = info;
+      }
+    }
+  } catch { /* fall back to Sleeper's final/not-final */ }
+  return out;
 }
 
 function toPlayer(id, p, team) {
